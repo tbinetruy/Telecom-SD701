@@ -1,17 +1,27 @@
 /*
+
  TP.scala
 
  sbt package && spark-submit target/scala-2.11/simple-project_2.11-1.0.jar
  */
+import org.apache.spark.SparkContext
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.types
 import org.apache.spark.ml.feature.VectorAssembler
-import org.apache.spark.ml.linalg.Vectors
+import org.apache.spark.mllib.linalg.Vectors
 import org.apache.spark.ml.classification.LogisticRegression
 import org.apache.spark.ml.Pipeline
+import org.apache.spark.mllib.linalg.SingularValueDecomposition
+import org.apache.spark.mllib.linalg.distributed.RowMatrix
+import org.apache.spark.mllib.linalg.Matrix
+import org.apache.spark.mllib.feature.StandardScaler
+import org.apache.spark.ml.feature.PCA
 
 object TP {
   def main(args: Array[String]) {
+    val sc = SparkContext.getOrCreate()
+    val sqlContext = new org.apache.spark.sql.SQLContext(sc)
+    import sqlContext.implicits._
     val spark = SparkSession
       .builder.appName("Simple Application").getOrCreate()
 
@@ -37,12 +47,17 @@ object TP {
       .setInputCols(inputcols)
       .setOutputCol("features")
 
+    val pca = new PCA()
+      .setInputCol("features")
+      .setOutputCol("pcaFeatures")
+      .setK(3)
+
     val classifier = new LogisticRegression()
       .setLabelCol("Cover_Type")
-      .setFeaturesCol("features")
+      .setFeaturesCol("pcaFeatures")
 
     val pipeline = new Pipeline()
-      .setStages(Array(vectorAssembler, classifier))
+      .setStages(Array(vectorAssembler, pca, classifier))
 
     val model = pipeline.fit(trainData)
 
@@ -56,8 +71,17 @@ object TP {
 
     predictions.select("prediction", "Cover_Type").show()
 
-    predictions.repartition(1).select("Id", "Cover_Type").write.option("header", "true").mode("overwrite").csv("results")
+    predictions.repartition(1)
+      .select("Id", "Cover_Type")
+      .write.option("header", "true")
+      .mode("overwrite").csv("results")
 
+
+    // val inputMatrix = sc.textFile("train-set-colless.csv")
+    //   .map(line =>
+    //     Vectors.dense(line.split(",").map(_.toDouble)))
+
+    // val G = new RowMatrix(inputMatrix)
 
     spark.stop()
   }
