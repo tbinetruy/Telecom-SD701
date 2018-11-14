@@ -17,6 +17,10 @@ import org.apache.spark.mllib.linalg.Matrix
 import org.apache.spark.mllib.feature.StandardScaler
 import org.apache.spark.ml.feature.PCA
 
+import org.apache.spark.ml.evaluation.BinaryClassificationEvaluator
+import org.apache.spark.ml.tuning.{CrossValidator, ParamGridBuilder}
+import org.apache.spark.ml.evaluation.RegressionEvaluator
+
 object TP {
   def main(args: Array[String]) {
     val sc = SparkContext.getOrCreate()
@@ -50,7 +54,6 @@ object TP {
     val pca = new PCA()
       .setInputCol("features")
       .setOutputCol("pcaFeatures")
-      .setK(3)
 
     val classifier = new LogisticRegression()
       .setLabelCol("Cover_Type")
@@ -59,29 +62,47 @@ object TP {
     val pipeline = new Pipeline()
       .setStages(Array(vectorAssembler, pca, classifier))
 
-    val model = pipeline.fit(trainData)
+    // val model = pipeline.fit(trainData)
 
-    var predictions = model.transform(testData)
+    // var predictions = model.transform(testData)
 
-    predictions = predictions.withColumn(
-      "Cover_Type",
-      predictions.col("prediction").cast(types.IntegerType)
-    )
-    predictions.printSchema()
+    // predictions = predictions.withColumn(
+    //   "Cover_Type",
+    //   predictions.col("prediction").cast(types.IntegerType)
+    // )
+    // predictions.printSchema()
 
-    predictions.select("prediction", "Cover_Type").show()
+    // predictions.select("prediction", "Cover_Type").show()
 
-    predictions.repartition(1)
+    // predictions.repartition(1)
+    //   .select("Id", "Cover_Type")
+    //   .write.option("header", "true")
+    //   .mode("overwrite").csv("results")
+
+
+    // val inputMatrix = sc.textFile("train-set-colless.csv").map(line => Vectors.dense(line.split(",").map(_.toDouble)))
+    // val G = new RowMatrix(inputMatrix)
+
+    val paramGrid = new ParamGridBuilder()
+      .addGrid(pca.k, Array(2, 20))
+      .addGrid(classifier.regParam, Array(0.1, 0.01))
+      .build()
+    val cv = new CrossValidator()
+      .setEstimator(pipeline)
+      .setEvaluator(new RegressionEvaluator().setLabelCol("Cover_Type"))
+      .setEstimatorParamMaps(paramGrid)
+      .setNumFolds(10)  // Use 3+ in practice
+
+    val cvModel = cv.fit(trainData)
+
+    val result = cvModel.transform(testData)
+
+    result.withColumn(
+        "Cover_Type",
+        result.col("prediction").cast(types.IntegerType))
       .select("Id", "Cover_Type")
       .write.option("header", "true")
       .mode("overwrite").csv("results")
-
-
-    // val inputMatrix = sc.textFile("train-set-colless.csv")
-    //   .map(line =>
-    //     Vectors.dense(line.split(",").map(_.toDouble)))
-
-    // val G = new RowMatrix(inputMatrix)
 
     spark.stop()
   }
