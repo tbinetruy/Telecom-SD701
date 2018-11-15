@@ -9,13 +9,24 @@ import org.apache.spark.SparkContext
 import org.apache.spark.sql.{SparkSession, types, DataFrame, Row, Dataset}
 import org.apache.spark.ml.feature.VectorAssembler
 import org.apache.spark.mllib.linalg.Vectors
-import org.apache.spark.ml.classification.{LogisticRegression, RandomForestClassifier}
+import org.apache.spark.ml.classification.{
+  LogisticRegression,
+  RandomForestClassifier,
+  GBTClassifier,
+  DecisionTreeClassifier,
+  LinearSVC
+}
 import org.apache.spark.ml.Pipeline
 import org.apache.spark.mllib.linalg.SingularValueDecomposition
 import org.apache.spark.mllib.linalg.distributed.RowMatrix
 import org.apache.spark.mllib.linalg.Matrix
 import org.apache.spark.mllib.feature.StandardScaler
-import org.apache.spark.ml.feature.PCA
+import org.apache.spark.ml.feature.{
+  PCA,
+  VectorIndexer,
+  IndexToString,
+  StringIndexer
+}
 
 import org.apache.spark.ml.tuning.{CrossValidator, CrossValidatorModel, ParamGridBuilder}
 import org.apache.spark.ml.evaluation.{
@@ -76,12 +87,12 @@ object TP {
       .setOutputCol("pcaFeatures")
       .setK(10)
   }
-  def getCrossValidator(pipeline: Pipeline, paramGrid: Array[ParamMap]): CrossValidator = {
+  def getCrossValidator(pipeline: Pipeline, paramGrid: Array[ParamMap], numFolds: Int): CrossValidator = {
     return new CrossValidator()
       .setEstimator(pipeline)
-      .setEvaluator(new RegressionEvaluator().setLabelCol("Cover_Type"))
+      .setEvaluator(new MulticlassClassificationEvaluator().setLabelCol("Cover_Type"))
       .setEstimatorParamMaps(paramGrid)
-      .setNumFolds(2)  // Use 3+ in practice
+      .setNumFolds(numFolds)  // Use 3+ in practice
   }
   def getRandomForestModel(): CrossValidator = {
     val vectorAssembler = this.getVectorAssembler()
@@ -94,10 +105,27 @@ object TP {
       .setStages(Array(vectorAssembler, classifier))
 
     val paramGrid = new ParamGridBuilder()
-      .addGrid(classifier.numTrees, Array(15))
+      .addGrid(classifier.numTrees, Array(10, 50, 100))
+      .addGrid(classifier.maxDepth, Array(1, 5, 10))
       .build()
 
-    return this.getCrossValidator(pipeline, paramGrid)
+    return this.getCrossValidator(pipeline, paramGrid, 2)
+  }
+  def getDecisionTree(): CrossValidator = {
+    val vectorAssembler = this.getVectorAssembler()
+
+    val classifier = new DecisionTreeClassifier()
+      .setLabelCol("Cover_Type")
+      .setFeaturesCol("features")
+
+    val pipeline = new Pipeline()
+      .setStages(Array(vectorAssembler, classifier))
+
+    val paramGrid = new ParamGridBuilder()
+      .addGrid(classifier.maxDepth, Array(29))
+      .build()
+
+    return this.getCrossValidator(pipeline, paramGrid, 6)
   }
   def getLogisticRegModel(): CrossValidator = {
     val vectorAssembler = this.getVectorAssembler()
@@ -115,17 +143,16 @@ object TP {
       .addGrid(classifier.regParam, Array(0.1))
       .build()
 
-    return this.getCrossValidator(pipeline, paramGrid)
+    return this.getCrossValidator(pipeline, paramGrid, 3)
   }
   def getVectorAssembler(): VectorAssembler = {
     return new VectorAssembler()
       .setInputCols(this.getInputCols)
       .setOutputCol("features")
   }
-  def score(trainData: DataFrame): DataFrame = {
-    val Array(training, test) = trainData.randomSplit(Array(0.9, 0.3), seed = 12345)
+  def score(cv: CrossValidator, trainData: DataFrame): DataFrame = {
+    val Array(training, test) = trainData.randomSplit(Array(0.7, 0.3), seed = 12345)
 
-    val cv = this.getLogisticRegModel()
     val cvModel = cv.fit(training)
     val result = cvModel.transform(test)
 
@@ -154,13 +181,19 @@ object TP {
 
     this.describe(trainData, testData)
 
-    // val pipeline = this.getLogisticRegModel()
-    val pipeline = this.getRandomForestModel()
+    var pipeline: CrossValidator = new CrossValidator()
+    Integer.parseInt(args(0)) match {
+      case 0 => pipeline = this.getLogisticRegModel()
+      case 1 => pipeline = this.getRandomForestModel()
+      case 2 => pipeline = this.getDecisionTree()
+    }
 
-    val result = this.score(trainData)
+    val result = this.score(pipeline, trainData)
 
     this.saveToCsv(result)
     this.describeResult(result)
+
+    result.show()
 
     spark.stop()
   }
