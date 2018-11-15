@@ -4,6 +4,7 @@
 
  sbt package && spark-submit target/scala-2.11/simple-project_2.11-1.0.jar
  */
+
 import org.apache.spark.SparkContext
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.types
