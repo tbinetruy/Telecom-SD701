@@ -17,9 +17,12 @@ import org.apache.spark.mllib.linalg.Matrix
 import org.apache.spark.mllib.feature.StandardScaler
 import org.apache.spark.ml.feature.PCA
 
-import org.apache.spark.ml.evaluation.BinaryClassificationEvaluator
 import org.apache.spark.ml.tuning.{CrossValidator, CrossValidatorModel, ParamGridBuilder}
-import org.apache.spark.ml.evaluation.RegressionEvaluator
+import org.apache.spark.ml.evaluation.{
+  MulticlassClassificationEvaluator,
+  RegressionEvaluator,
+  BinaryClassificationEvaluator
+}
 
 import org.apache.spark.ml.param.{
   DoubleParam,
@@ -42,10 +45,13 @@ object TP {
   }
   def describeResult(result: DataFrame) = {
     result
-      .withColumn(
-        "Cover_Type",
-        result.col("prediction").cast(types.IntegerType))
       .groupBy("Cover_Type", "prediction").count.show()
+
+    val score = new MulticlassClassificationEvaluator()
+      .setLabelCol("Cover_Type")
+      .setPredictionCol("predictions")
+      .evaluate(result)
+    println("f1 score for model: " + score)
   }
   def describe(trainData: DataFrame, testData: DataFrame) = {
     val trainCount = trainData.count()
@@ -69,7 +75,7 @@ object TP {
       .mode("overwrite")
       .csv("results")
   }
-  def getCrossValidation(regParam: DoubleParam, pipeline: Pipeline): CrossValidator = {
+  def getCrossValidation(data: DataFrame, regParam: DoubleParam, pipeline: Pipeline): CrossValidator = {
     val paramGrid = new ParamGridBuilder()
     // .addGrid(pca.k, Array(2, 20))
       .addGrid(regParam, Array(0.1))
@@ -115,9 +121,13 @@ object TP {
     val pipeline = new Pipeline()
       .setStages(Array(vectorAssembler, classifier))
 
-    val cv = this.getCrossValidation(classifier.regParam, pipeline)
-    val cvModel = cv.fit(trainData)
-    val result = cvModel.transform(testData)
+    val cv = this.getCrossValidation(trainData, classifier.regParam, pipeline)
+
+
+
+    val Array(training, test) = trainData.randomSplit(Array(0.9, 0.3), seed = 12345)
+    val cvModel = cv.fit(training)
+    val result = cvModel.transform(test)
 
     this.saveToCsv(result)
     this.describeResult(result)
