@@ -75,22 +75,24 @@ object TP {
       .mode("overwrite")
       .csv("results")
   }
-  def getCrossValidation(data: DataFrame, regParam: DoubleParam, pipeline: Pipeline): CrossValidator = {
-    val paramGrid = new ParamGridBuilder()
-    // .addGrid(pca.k, Array(2, 20))
-      .addGrid(regParam, Array(0.1))
-      .build()
+  def getPca(): PCA = {
+    return new PCA()
+      .setInputCol("features")
+      .setOutputCol("pcaFeatures")
+      .setK(10)
+  }
+  def getCrossValidator(pipeline: Pipeline, paramGrid: Array[ParamMap]): CrossValidator = {
     return new CrossValidator()
       .setEstimator(pipeline)
       .setEvaluator(new RegressionEvaluator().setLabelCol("Cover_Type"))
       .setEstimatorParamMaps(paramGrid)
       .setNumFolds(2)  // Use 3+ in practice
   }
-  def getLogisticRegModel(vectorAssembler: VectorAssembler): CrossValidator = {
-    val pca = new PCA()
-      .setInputCol("features")
-      .setOutputCol("pcaFeatures")
-      .setK(10)
+  def getLogisticRegModel(): CrossValidator = {
+    val vectorAssembler = this.getVectorAssembler()
+
+    val pca = this.getPca()
+
     val classifier = new LogisticRegression()
       .setLabelCol("Cover_Type")
       .setFeaturesCol("features")
@@ -99,15 +101,15 @@ object TP {
       .setStages(Array(vectorAssembler, classifier))
 
     val paramGrid = new ParamGridBuilder()
-    // .addGrid(pca.k, Array(2, 20))
       .addGrid(classifier.regParam, Array(0.1))
       .build()
-    return new CrossValidator()
-      .setEstimator(pipeline)
-      .setEvaluator(new RegressionEvaluator().setLabelCol("Cover_Type"))
-      .setEstimatorParamMaps(paramGrid)
-      .setNumFolds(2)  // Use 3+ in practice
 
+    return this.getCrossValidator(pipeline, paramGrid)
+  }
+  def getVectorAssembler(): VectorAssembler = {
+    return new VectorAssembler()
+      .setInputCols(this.getInputCols)
+      .setOutputCol("features")
   }
   def main(args: Array[String]) {
     val sc = SparkContext.getOrCreate()
@@ -121,18 +123,13 @@ object TP {
 
     this.describe(trainData, testData)
 
-    val inputcols = this.getInputCols()
-
-    val vectorAssembler = new VectorAssembler()
-      .setInputCols(inputcols)
-      .setOutputCol("features")
 
     val rf = new RandomForestClassifier()
       .setLabelCol("Cover_Type")
       .setFeaturesCol("features")
       .setNumTrees(12)
 
-    val pipeline = this.getLogisticRegModel(vectorAssembler)
+    val pipeline = this.getLogisticRegModel()
 
     val Array(training, test) = trainData.randomSplit(Array(0.9, 0.3), seed = 12345)
 
