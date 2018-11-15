@@ -49,7 +49,7 @@ object TP {
 
     val score = new MulticlassClassificationEvaluator()
       .setLabelCol("Cover_Type")
-      .setPredictionCol("predictions")
+      .setPredictionCol("prediction")
       .evaluate(result)
     println("f1 score for model: " + score)
   }
