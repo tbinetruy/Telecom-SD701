@@ -133,7 +133,7 @@ object TP {
 
     val Array(training, test) = trainData.randomSplit(Array(0.9, 0.3), seed = 12345)
 
-    val cv = this.getLogisticRegModel(vectorAssembler)
+    val cv = this.getLogisticRegModel()
     val cvModel = cv.fit(training)
     val result = cvModel.transform(test)
 
