@@ -35,13 +35,13 @@ object TP {
     return spark.read.format("csv")
       .option("header", "true")
       .option("inferSchema", "true")
-      .load("train-set.csv")
+      .load("../train-set.csv")
   }
   def fetchTestData(spark: SparkSession): DataFrame = {
     return spark.read.format("csv")
       .option("header", "true")
       .option("inferSchema", "true")
-      .load("test-set.csv")
+      .load("../test-set.csv")
   }
   def describeResult(result: DataFrame) = {
     result

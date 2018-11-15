@@ -2,20 +2,19 @@
 
 USER=binetruy
 HOST=c133-01
+MODEL_NAME=$1
 
 # compile
 sbt package
 
 # upload
-scp target/scala-2.11/simple-project_2.11-1.0.jar $USER@$HOST:~/kaggle
+ssh $USER@$HOST "mkdir -p kaggle/$MODEL_NAME"
+scp target/scala-2.11/simple-project_2.11-1.0.jar $USER@$HOST:~/kaggle/$MODEL_NAME
 
 # exec
-ssh $USER@$HOST "cd kaggle && ./spark/bin/spark-submit simple-project_2.11-1.0.jar"
+ssh $USER@$HOST "cd kaggle/$MODEL_NAME && ./../spark/bin/spark-submit simple-project_2.11-1.0.jar"
 
 # repatriate result
-scp $USER@$HOST:~/kaggle/results/*.csv results.csv
-scp $USER@$HOST:~/kaggle/f1-score f1-score
-
-# delete result file on server
-ssh $USER@$HOST "rm -rf ~/kaggle/results/"
-
+mkdir -p $MODEL_NAME
+scp $USER@$HOST:~/kaggle/$MODEL_NAME/results/*.csv $MODEL_NAME/results.csv
+scp $USER@$HOST:~/kaggle/$MODEL_NAME/f1-score $MODEL_NAME/f1-score
