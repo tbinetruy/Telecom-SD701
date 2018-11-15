@@ -47,11 +47,6 @@ object TP {
     result
       .groupBy("Cover_Type", "prediction").count.show()
 
-    val score = new MulticlassClassificationEvaluator()
-      .setLabelCol("Cover_Type")
-      .setPredictionCol("prediction")
-      .evaluate(result)
-    println("f1 score for model: " + score)
   }
   def describe(trainData: DataFrame, testData: DataFrame) = {
     val trainCount = trainData.count()
@@ -88,6 +83,22 @@ object TP {
       .setEstimatorParamMaps(paramGrid)
       .setNumFolds(2)  // Use 3+ in practice
   }
+  def getRandomForestModel(): CrossValidator = {
+    val vectorAssembler = this.getVectorAssembler()
+
+    val classifier = new RandomForestClassifier()
+      .setLabelCol("Cover_Type")
+      .setFeaturesCol("features")
+
+    val pipeline = new Pipeline()
+      .setStages(Array(vectorAssembler, classifier))
+
+    val paramGrid = new ParamGridBuilder()
+      .addGrid(classifier.numTrees, Array(15))
+      .build()
+
+    return this.getCrossValidator(pipeline, paramGrid)
+  }
   def getLogisticRegModel(): CrossValidator = {
     val vectorAssembler = this.getVectorAssembler()
 
@@ -111,6 +122,26 @@ object TP {
       .setInputCols(this.getInputCols)
       .setOutputCol("features")
   }
+  def score(trainData: DataFrame): DataFrame = {
+    val Array(training, test) = trainData.randomSplit(Array(0.9, 0.3), seed = 12345)
+
+    val cv = this.getLogisticRegModel()
+    val cvModel = cv.fit(training)
+    val result = cvModel.transform(test)
+
+    val score = new MulticlassClassificationEvaluator()
+      .setLabelCol("Cover_Type")
+      .setPredictionCol("prediction")
+      .evaluate(result)
+
+    println("\n\n=============\n\n f1 score for model: " + score)
+    println("\n\n=============\n\n")
+
+    import java.io.PrintWriter
+    new PrintWriter("f1-score") { write(score.toString()); close }
+
+    return result
+  }
   def main(args: Array[String]) {
     val sc = SparkContext.getOrCreate()
     val sqlContext = new org.apache.spark.sql.SQLContext(sc)
@@ -123,19 +154,10 @@ object TP {
 
     this.describe(trainData, testData)
 
+    // val pipeline = this.getLogisticRegModel()
+    val pipeline = this.getRandomForestModel()
 
-    val rf = new RandomForestClassifier()
-      .setLabelCol("Cover_Type")
-      .setFeaturesCol("features")
-      .setNumTrees(12)
-
-    val pipeline = this.getLogisticRegModel()
-
-    val Array(training, test) = trainData.randomSplit(Array(0.9, 0.3), seed = 12345)
-
-    val cv = this.getLogisticRegModel()
-    val cvModel = cv.fit(training)
-    val result = cvModel.transform(test)
+    val result = this.score(trainData)
 
     this.saveToCsv(result)
     this.describeResult(result)
