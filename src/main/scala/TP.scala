@@ -86,6 +86,29 @@ object TP {
       .setEstimatorParamMaps(paramGrid)
       .setNumFolds(2)  // Use 3+ in practice
   }
+  def getLogisticRegModel(vectorAssembler: VectorAssembler): CrossValidator = {
+    val pca = new PCA()
+      .setInputCol("features")
+      .setOutputCol("pcaFeatures")
+      .setK(10)
+    val classifier = new LogisticRegression()
+      .setLabelCol("Cover_Type")
+      .setFeaturesCol("features")
+
+    val pipeline = new Pipeline()
+      .setStages(Array(vectorAssembler, classifier))
+
+    val paramGrid = new ParamGridBuilder()
+    // .addGrid(pca.k, Array(2, 20))
+      .addGrid(classifier.regParam, Array(0.1))
+      .build()
+    return new CrossValidator()
+      .setEstimator(pipeline)
+      .setEvaluator(new RegressionEvaluator().setLabelCol("Cover_Type"))
+      .setEstimatorParamMaps(paramGrid)
+      .setNumFolds(2)  // Use 3+ in practice
+
+  }
   def main(args: Array[String]) {
     val sc = SparkContext.getOrCreate()
     val sqlContext = new org.apache.spark.sql.SQLContext(sc)
@@ -104,28 +127,16 @@ object TP {
       .setInputCols(inputcols)
       .setOutputCol("features")
 
-    val pca = new PCA()
-      .setInputCol("features")
-      .setOutputCol("pcaFeatures")
-      .setK(10)
-
-    val classifier = new LogisticRegression()
-      .setLabelCol("Cover_Type")
-      .setFeaturesCol("features")
-
     val rf = new RandomForestClassifier()
       .setLabelCol("Cover_Type")
       .setFeaturesCol("features")
       .setNumTrees(12)
 
-    val pipeline = new Pipeline()
-      .setStages(Array(vectorAssembler, classifier))
-
-    val cv = this.getCrossValidation(trainData, classifier.regParam, pipeline)
-
-
+    val pipeline = this.getLogisticRegModel(vectorAssembler)
 
     val Array(training, test) = trainData.randomSplit(Array(0.9, 0.3), seed = 12345)
+
+    val cv = this.getLogisticRegModel(vectorAssembler)
     val cvModel = cv.fit(training)
     val result = cvModel.transform(test)
 
